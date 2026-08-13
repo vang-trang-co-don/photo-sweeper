@@ -22,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Image } from 'expo-image';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 import { BackCard } from './BackCard';
 import { MediaItem, DateRange, getMonthIndex, monthLabel, MonthInfo } from '../media/library';
@@ -35,9 +36,11 @@ const FLY_DISTANCE = SCREEN_WIDTH * 1.6;
 interface TopCardProps {
   item: MediaItem;
   translateX: SharedValue<number>;
+  fit: 'contain' | 'cover';
+  videoMuted: boolean;
 }
 
-const TopCard = memo(function TopCard({ item, translateX }: TopCardProps) {
+const TopCard = memo(function TopCard({ item, translateX, fit, videoMuted }: TopCardProps) {
   const style = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
@@ -55,7 +58,16 @@ const TopCard = memo(function TopCard({ item, translateX }: TopCardProps) {
 
   return (
     <Animated.View style={[styles.topCard, style]}>
-      <Image source={{ uri: item.uri }} style={styles.image} contentFit="cover" />
+      {item.isVideo ? (
+        <VideoBody uri={item.uri} muted={videoMuted} fit={fit} />
+      ) : (
+        <Image
+          source={{ uri: item.uri }}
+          style={styles.image}
+          contentFit={fit}
+          cachePolicy="memory-disk"
+        />
+      )}
       <Animated.View style={[styles.badge, styles.deleteBadge, deleteBadge]}>
         <Text style={[styles.badgeText, styles.deleteBadgeText]}>DELETE</Text>
       </Animated.View>
@@ -64,12 +76,42 @@ const TopCard = memo(function TopCard({ item, translateX }: TopCardProps) {
       </Animated.View>
       {item.isVideo ? (
         <View style={styles.videoBadge}>
-          <Text style={styles.videoText}>VIDEO</Text>
+          <Text style={styles.videoText}>{videoMuted ? 'MUTED' : 'SOUND ON'}</Text>
         </View>
       ) : null}
     </Animated.View>
   );
 });
+
+interface VideoBodyProps {
+  uri: string;
+  muted: boolean;
+  fit: 'contain' | 'cover';
+}
+
+/**
+ * Autoplays a muted looping preview so the reviewer sees the video playing.
+ * Tapping the card unmutes it (handled by the parent gesture).
+ */
+function VideoBody({ uri, muted, fit }: VideoBodyProps) {
+  const player = useVideoPlayer({ uri }, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+
+  useEffect(() => {
+    player.muted = muted;
+  }, [player, muted]);
+
+  useEffect(() => {
+    return () => {
+      player.pause();
+    };
+  }, [player]);
+
+  return <VideoView player={player} style={styles.image} contentFit={fit} nativeControls={false} />;
+}
 
 export function SweeperScreen() {
   const [range, setRange] = useState<DateRange | undefined>(undefined);
@@ -77,6 +119,8 @@ export function SweeperScreen() {
 
   const [monthsOpen, setMonthsOpen] = useState(false);
   const [months, setMonths] = useState<MonthInfo[] | null>(null);
+  const [fit, setFit] = useState<'contain' | 'cover'>('contain');
+  const [videoMuted, setVideoMuted] = useState(true);
 
   const openMonths = useCallback(async () => {
     setMonthsOpen(true);
@@ -106,13 +150,17 @@ export function SweeperScreen() {
   const top = session.top;
 
   useEffect(() => {
-    const next = session.queue[1]?.uri;
-    const after = session.queue[2]?.uri;
-    if (next) {
-      Image.prefetch(next).catch(() => {});
+    setFit('contain');
+  }, [top?.id]);
+
+  useEffect(() => {
+    const next = session.queue[1];
+    const after = session.queue[2];
+    if (next && !next.isVideo) {
+      Image.prefetch(next.uri).catch(() => {});
     }
-    if (after) {
-      Image.prefetch(after).catch(() => {});
+    if (after && !after.isVideo) {
+      Image.prefetch(after.uri).catch(() => {});
     }
   }, [top?.id, session.queue]);
 
@@ -132,6 +180,16 @@ export function SweeperScreen() {
     },
     [translateX]
   );
+
+  const onTapMedia = useCallback(() => {
+    const item = topRef.current;
+    if (!item) return;
+    if (item.isVideo) {
+      setVideoMuted((m) => !m);
+    } else {
+      setFit((f) => (f === 'contain' ? 'cover' : 'contain'));
+    }
+  }, []);
 
   const pan = useMemo(
     () =>
@@ -176,6 +234,18 @@ export function SweeperScreen() {
         }),
     [onSwipeDecision, translateX]
   );
+
+  const tap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(400)
+        .onEnd(() => {
+          runOnJS(onTapMedia)();
+        }),
+    [onTapMedia]
+  );
+
+  const composed = useMemo(() => Gesture.Race(pan, tap), [pan, tap]);
 
   const back1 = session.queue[1];
   const back2 = session.queue[2];
@@ -229,6 +299,9 @@ export function SweeperScreen() {
         </Pressable>
       </View>
       {range ? <Text style={styles.monthCaption}>viewing {filterLabel}</Text> : null}
+      <Text style={styles.tapHint}>
+        tap photo to zoom · tap video for sound
+      </Text>
       <View style={styles.stack}>
         {back2 ? (
           <View style={styles.cardSlot}>
@@ -241,9 +314,9 @@ export function SweeperScreen() {
           </View>
         ) : null}
         {top ? (
-          <GestureDetector gesture={pan} key={top.id}>
+          <GestureDetector gesture={composed} key={top.id}>
             <View style={styles.cardSlot}>
-              <TopCard item={top} translateX={translateX} />
+              <TopCard item={top} translateX={translateX} fit={fit} videoMuted={videoMuted} />
             </View>
           </GestureDetector>
         ) : null}
@@ -369,6 +442,13 @@ const styles = StyleSheet.create({
   },
   monthCaption: {
     color: '#888',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: -6,
+    marginBottom: 12,
+  },
+  tapHint: {
+    color: '#555',
     fontSize: 12,
     textAlign: 'center',
     marginTop: -6,

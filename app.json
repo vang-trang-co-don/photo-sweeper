@@ -20,7 +20,8 @@
             "photos"
           ]
         }
-      ]
+      ],
+      "expo-video"
     ]
   }
 }

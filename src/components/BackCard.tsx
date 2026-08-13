@@ -12,11 +12,18 @@ interface Props {
 /**
  * Static card shown behind the top one. Kept as a plain (non-animated) view so the
  * gesture-driven frames only update a single animated component (the top card).
+ * Images use `contain` so nothing is ever cropped; videos show a play placeholder.
  */
 export const BackCard = memo(function BackCard({ uri, isVideo, scale }: Props) {
   return (
     <View style={[styles.card, { transform: [{ scale }] }]}>
-      <Image source={{ uri }} style={styles.image} contentFit="cover" cachePolicy="memory-disk" />
+      {isVideo ? (
+        <View style={styles.videoPlaceholder}>
+          <View style={styles.playGlyph} />
+        </View>
+      ) : (
+        <Image source={{ uri }} style={styles.image} contentFit="contain" cachePolicy="memory-disk" />
+      )}
       {isVideo ? (
         <View style={styles.videoBadge}>
           <Text style={styles.videoText}>VIDEO</Text>
@@ -38,6 +45,22 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  videoPlaceholder: {
+    flex: 1,
+    backgroundColor: '#1a1a1c',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playGlyph: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 22,
+    borderBottomWidth: 22,
+    borderLeftWidth: 34,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: 'rgba(255,255,255,0.7)',
   },
   videoBadge: {
     position: 'absolute',
