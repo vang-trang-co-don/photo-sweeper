@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   FlatList,
   Modal,
@@ -106,7 +107,11 @@ function VideoBody({ uri, muted, fit }: VideoBodyProps) {
 
   useEffect(() => {
     return () => {
-      player.pause();
+      try {
+        player.pause();
+      } catch {
+        // Player's native object may already be released after the card unmounts.
+      }
     };
   }, [player]);
 
@@ -128,6 +133,22 @@ export function SweeperScreen() {
       setMonths(await getMonthIndex());
     }
   }, [months]);
+
+  const requestSwitchMonth = useCallback(() => {
+    if (session.pendingCount > 0) {
+      Alert.alert(
+        'Uncommitted deletes',
+        `${session.pendingCount} photo(s) you swiped left are not deleted yet. Commit them before switching months?`,
+        [
+          { text: 'Keep & switch', style: 'destructive', onPress: openMonths },
+          { text: 'Commit & switch', onPress: () => session.commitDelete().then(openMonths) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      openMonths();
+    }
+  }, [openMonths, session.commitDelete, session.pendingCount]);
 
   const selectMonth = useCallback((m: MonthInfo) => {
     setRange({ after: m.start, before: m.end });
@@ -266,12 +287,26 @@ export function SweeperScreen() {
         <Text style={styles.title}>Done — library reviewed!</Text>
         <Text style={styles.subtitle}>
           Deleted: {session.stats.deleted} · Kept: {session.stats.kept}
+          {session.pendingCount > 0 ? ` · Pending: ${session.pendingCount}` : ''}
           {session.stats.failed > 0 ? ` · Failed: ${session.stats.failed}` : ''}
         </Text>
         <Text style={styles.hint}>
           Deleted photos are in the Photos app's Recently Deleted and can be recovered there.
         </Text>
-        <Pressable style={styles.doneButton} onPress={openMonths}>
+        {session.pendingCount > 0 ? (
+          <Pressable
+            style={styles.deletePendingButton}
+            onPress={session.commitDelete}
+            disabled={session.committing}
+          >
+            <Text style={styles.doneButtonText}>
+              {session.committing
+                ? 'Deleting…'
+                : `Delete ${session.pendingCount} pending`}
+            </Text>
+          </Pressable>
+        ) : null}
+        <Pressable style={styles.doneButton} onPress={requestSwitchMonth}>
           <Text style={styles.doneButtonText}>Switch month</Text>
         </Pressable>
         <MonthPickerModal
@@ -292,7 +327,7 @@ export function SweeperScreen() {
         <Text style={styles.header}>
           {totalSeen} reviewed
         </Text>
-        <Pressable style={styles.monthButton} onPress={openMonths}>
+        <Pressable style={styles.monthButton} onPress={requestSwitchMonth}>
           <Text style={styles.monthButtonText}>
             {range ? 'Month ▾' : 'All'}
           </Text>
@@ -458,6 +493,13 @@ const styles = StyleSheet.create({
     marginTop: 24,
     borderColor: '#333',
     borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  deletePendingButton: {
+    marginTop: 24,
+    backgroundColor: '#ff4757',
     borderRadius: 12,
     paddingHorizontal: 24,
     paddingVertical: 12,
