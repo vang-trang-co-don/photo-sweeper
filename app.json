@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "photo-sweeper",
+    "slug": "photo-sweeper",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "photosweeper",
+    "ios": {
+      "supportsTablet": false
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow photo-sweeper to access your photos so you can swipe left to delete or right to keep them.",
+          "savePhotosPermission": "Allow photo-sweeper to save changes to your photo library.",
+          "granularPermissions": [
+            "photos"
+          ]
+        }
+      ]
+    ]
+  }
+}
